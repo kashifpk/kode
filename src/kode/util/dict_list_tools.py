@@ -80,3 +80,101 @@ def dict_set_if_exists(dd, d_key, sd, s_keys):
     exists, val = d_key_path_exists(s_keys, sd)
     if exists:
         dd[d_key] = val
+
+def value_lookup(keys, obj, call_callable=True):
+    """
+    Check that the keys given exist recursively in object,
+
+    :param keys: List of keys to recursively lookup. First key is expected to
+        be at parent level, second key in the child dict of parent and so on.
+        For embedded lists index values like 0, 1, 2 can be used as keys.
+        Can also be a string in which case it is expected to be a dot notation
+        starting from . (for example .details.certificates.0.certificate.0.not_after)
+    :param obj: The object to look into (can be object, list or dict).
+    :param call_callabe: If current value is a callable function (without any
+        args then call it.)
+
+    Returns a 2-item tuple, where first boolean value indicates if path exists
+    or not and second value contains the value present at path or None if
+    path does not exist.
+    """
+    new_obj = obj
+    if isinstance(keys, str) and keys.startswith('.'):
+        keys = keys.lstrip(".").split(".")
+
+    for k in keys:
+        if isinstance(new_obj, Mapping):
+            if k not in new_obj:
+                return (False, None)
+
+            new_obj = new_obj[k]
+
+        elif isinstance(new_obj, (list, tuple)):
+            # see if key can be converted to int.
+            k = int(k)
+            if len(new_obj) <= k:
+                return (False, None)
+
+            new_obj = new_obj[k]
+
+        else:
+            if not hasattr(new_obj, k):
+                return (False, None)
+
+            if callable(getattr(new_obj, k)) and call_callable:
+                new_obj = getattr(new_obj, k)()
+            else:
+                new_obj = getattr(new_obj, k)
+
+    return (True, new_obj)
+
+
+def value_replace(keys, obj, new_val):
+    """
+    Check that the keys given exist recursively in object and replace the last
+    key, index or property with given new_val.
+
+    :param keys: List of keys to recursively lookup. First key is expected to
+        be at parent level, second key in the child dict of parent and so on.
+        For embedded lists index values like 0, 1, 2 can be used as keys.
+    :param obj: The object to look into (can be object, list or dict).
+    :param new_Val: New value to be set as value of obj's keys[-1] value.
+
+    Returns True or False indicating if value was found and replaced.
+    """
+    new_obj = obj
+
+    last_idx = len(keys) - 1
+    for idx, k in enumerate(keys):
+        if isinstance(new_obj, Mapping):
+            if k not in new_obj:
+                return False
+
+            if idx == last_idx:
+                new_obj[k] = new_val
+                return True
+            else:
+                new_obj = new_obj[k]
+
+        elif isinstance(new_obj, list):  # replace won't work on tuples
+            if len(new_obj) <= k:
+                return False
+
+            if idx == last_idx:
+                new_obj.insert(k, new_val)
+                del new_obj[k + 1]
+                return True
+            else:
+                new_obj = new_obj[k]
+
+        else:
+            if not hasattr(new_obj, k):
+                return False
+
+            if idx == last_idx:
+                setattr(new_obj, k, new_val)
+                return True
+            else:
+                new_obj = getattr(new_obj, k)
+
+    return False
